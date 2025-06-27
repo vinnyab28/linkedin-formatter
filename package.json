@@ -1,0 +1,24 @@
+{
+  "name": "linkedin-formatter",
+  "version": "1.0.0",
+  "description": "Adds formatting buttons and character counter to LinkedIn post editor",
+  "main": "src/content.js",
+  "scripts": {
+    "build": "npm run build:chrome && npm run build:firefox && npm run build:safari",
+    "build:chrome": "mkdir -p dist/chrome && cp -r src/* dist/chrome/ && cd dist && zip -r linkedin-formatter-chrome.zip chrome",
+    "build:firefox": "mkdir -p dist/firefox && cp -r src/* dist/firefox/ && cd dist && zip -r linkedin-formatter-firefox.zip firefox",
+    "build:safari": "mkdir -p dist/safari && cp -r src/* dist/safari/",
+    "test": "echo 'No tests implemented yet'"
+  },
+  "keywords": [
+    "browser-extension",
+    "linkedin",
+    "formatter",
+    "text-formatting",
+    "character-counter"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {}
+}

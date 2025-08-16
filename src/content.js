@@ -2,6 +2,8 @@ const buttonContainerSelector = '.share-creation-state__additional-toolbar';
 const editorSelector = '.ql-editor';
 
 // Unicode ranges for formatted text
+// Note: Unicode Mathematical Alphanumeric Symbols don't support combined bold+italic
+// So when both are requested, bold takes priority over italic
 const UNICODE_RANGES = {
     // Normal ranges
     normal: {
@@ -79,62 +81,229 @@ function convertChar(char, fromStyle, toStyle) {
 }
 
 /**
- * Converts a character to a specific style, regardless of its current style
- * @param {string} char - Character to format
- * @param {string} targetStyle - 'normal', 'bold', 'italic', or 'underline'
+ * Gets the selected text while preserving all Unicode formatting and newlines
+ * @param {Range} range - The selection range
+ * @returns {string} - The selected text with original formatting preserved
+ */
+function getSelectedTextWithFormatting(range) {
+    if (!range || range.collapsed) return '';
+    
+    // Create a temporary container to extract the content
+    const container = document.createElement('div');
+    container.appendChild(range.cloneContents());
+    
+    // Extract text content which preserves Unicode characters and newlines
+    return container.textContent || container.innerText || '';
+}
+
+/**
+ * Detects the current formatting state of a character
+ * @param {string} char - Character to analyze (may include underline combining char)
+ * @returns {Object} - Object with bold, italic, underline boolean properties
+ */
+function detectCharacterFormatting(char) {
+    const formatting = { bold: false, italic: false, underline: false, normal: false };
+    
+    // Check for underline (combining character)
+    if (char.length > 1 && char.includes('\u0332')) {
+        formatting.underline = true;
+        // Remove underline to check base character
+        char = char.replace(/\u0332/g, '');
+    }
+    
+    if (char.length === 0) return formatting;
+    
+    const baseChar = char[0];
+    
+    // Check if it's in bold range
+    const boldType = getCharType(baseChar, 'bold');
+    if (boldType) {
+        formatting.bold = true;
+        return formatting;
+    }
+    
+    // Check if it's in italic range
+    const italicType = getCharType(baseChar, 'italic');
+    if (italicType) {
+        formatting.italic = true;
+        return formatting;
+    }
+    
+    // Check if it's normal text
+    const normalType = getCharType(baseChar, 'normal');
+    if (normalType) {
+        formatting.normal = true;
+    }
+    
+    return formatting;
+}
+
+/**
+ * Analyzes the formatting state of the entire selected text
+ * @param {string} text - Text to analyze
+ * @returns {Object} - Object with percentages of each formatting type
+ */
+function analyzeTextFormatting(text) {
+    if (!text) return { bold: 0, italic: 0, underline: 0, normal: 100 };
+    
+    const chars = Array.from(text);
+    let totalChars = 0;
+    let boldChars = 0;
+    let italicChars = 0;
+    let underlineChars = 0;
+    let normalChars = 0;
+    
+    let i = 0;
+    while (i < chars.length) {
+        let char = chars[i];
+        
+        // Check if next character is underline combining character
+        if (i + 1 < chars.length && chars[i + 1] === '\u0332') {
+            char += chars[i + 1];
+            i++; // Skip the combining character in next iteration
+        }
+        
+        // Skip pure whitespace and newlines for formatting analysis
+        if (char.trim() === '' || char === '\n' || char === '\r') {
+            i++;
+            continue;
+        }
+        
+        const formatting = detectCharacterFormatting(char);
+        totalChars++;
+        
+        if (formatting.bold) boldChars++;
+        if (formatting.italic) italicChars++;
+        if (formatting.underline) underlineChars++;
+        if (formatting.normal) normalChars++;
+        
+        i++;
+    }
+    
+    if (totalChars === 0) return { bold: 0, italic: 0, underline: 0, normal: 100 };
+    
+    return {
+        bold: (boldChars / totalChars) * 100,
+        italic: (italicChars / totalChars) * 100,
+        underline: (underlineChars / totalChars) * 100,
+        normal: (normalChars / totalChars) * 100
+    };
+}
+
+/**
+ * Applies or removes a specific formatting to/from a character
+ * @param {string} char - Character to format (may include underline)
+ * @param {string} formatType - 'bold', 'italic', 'underline'
+ * @param {boolean} shouldApply - Whether to apply (true) or remove (false) the formatting
  * @returns {string} - Formatted character
  */
-function formatChar(char, targetStyle) {
-    // Special case for underline which uses combining character
-    if (targetStyle === 'underline') {
-        // Remove any existing underline first
-        if (char.length > 1 && char[1] === '\u0332') {
-            char = char[0];
+function toggleCharacterFormatting(char, formatType, shouldApply) {
+    if (!char || char.trim() === '') return char;
+    
+    let baseChar = char;
+    let hasUnderline = false;
+    
+    // Handle underline combining character
+    if (char.includes('\u0332')) {
+        hasUnderline = true;
+        baseChar = char.replace(/\u0332/g, '');
+    }
+    
+    if (baseChar.length === 0) return char;
+    
+    // Determine current base format
+    const currentFormatting = detectCharacterFormatting(baseChar);
+    let resultChar = baseChar[0];
+    
+    // Start with the base character in normal form
+    if (currentFormatting.bold) {
+        resultChar = convertChar(baseChar[0], 'bold', 'normal');
+    } else if (currentFormatting.italic) {
+        resultChar = convertChar(baseChar[0], 'italic', 'normal');
+    }
+    
+    // Now determine what the final formatting should be
+    let shouldBeBold = currentFormatting.bold;
+    let shouldBeItalic = currentFormatting.italic;
+    
+    // Apply the toggle logic
+    if (formatType === 'bold') {
+        shouldBeBold = shouldApply;
+    } else if (formatType === 'italic') {
+        shouldBeItalic = shouldApply;
+    }
+    
+    // Handle underline separately
+    if (formatType === 'underline') {
+        hasUnderline = shouldApply;
+    }
+    
+    // Apply the final formatting
+    // Note: We can't have both bold and italic in Unicode mathematical symbols
+    // So we prioritize bold over italic if both are requested
+    if (shouldBeBold) {
+        resultChar = convertChar(resultChar, 'normal', 'bold');
+    } else if (shouldBeItalic) {
+        resultChar = convertChar(resultChar, 'normal', 'italic');
+    }
+    
+    // Add underline back if needed
+    if (hasUnderline && resultChar.trim() !== '') {
+        resultChar += '\u0332';
+    }
+    
+    return resultChar;
+}
+
+/**
+ * Advanced formatting function that handles toggle logic
+ * @param {string} text - Text to format
+ * @param {string} formatType - 'bold', 'italic', 'underline', or 'normal'
+ * @returns {string} - Formatted text with preserved newlines and spaces
+ */
+function formatTextAdvanced(text, formatType) {
+    if (!text) return text;
+    
+    if (formatType === 'normal') {
+        return normalizeText(text);
+    }
+    
+    // Analyze current formatting to determine if we should apply or remove
+    const analysis = analyzeTextFormatting(text);
+    
+    // Determine if we should apply or remove the formatting
+    // If more than 30% of text already has this formatting, remove it; otherwise apply it
+    // Using 30% threshold to be more responsive to user intent
+    let shouldApply = true;
+    if (formatType === 'bold' && analysis.bold > 30) shouldApply = false;
+    if (formatType === 'italic' && analysis.italic > 30) shouldApply = false;
+    if (formatType === 'underline' && analysis.underline > 30) shouldApply = false;
+    
+    // Process each character while preserving structure
+    const chars = Array.from(text);
+    let result = '';
+    let i = 0;
+    
+    while (i < chars.length) {
+        let char = chars[i];
+        
+        // Check if next character is underline combining character
+        if (i + 1 < chars.length && chars[i + 1] === '\u0332') {
+            char += chars[i + 1];
+            i++; // Skip the combining character in next iteration
         }
         
-        // Skip whitespace and don't double-underline
-        if (char.trim() === '' || char === '\u0332') {
-            return char;
+        // Preserve newlines and whitespace
+        if (char === '\n' || char === '\r' || char.trim() === '') {
+            result += char;
+        } else {
+            result += toggleCharacterFormatting(char, formatType, shouldApply);
         }
         
-        return char + '\u0332';
+        i++;
     }
     
-    // For normal, bold, and italic styles
-    
-    // First determine what kind of character this is (in any style)
-    let charType = null;
-    let currentStyle = null;
-    
-    // Check in normal style
-    charType = getCharType(char, 'normal');
-    if (charType) {
-        currentStyle = 'normal';
-    }
-    
-    // Check in bold style
-    if (!charType) {
-        charType = getCharType(char, 'bold');
-        if (charType) {
-            currentStyle = 'bold';
-        }
-    }
-    
-    // Check in italic style
-    if (!charType) {
-        charType = getCharType(char, 'italic');
-        if (charType) {
-            currentStyle = 'italic';
-        }
-    }
-    
-    // If we couldn't determine the character type, return unchanged
-    if (!charType || !currentStyle) {
-        return char;
-    }
-    
-    // Convert from the current style to the target style
-    return convertChar(char, currentStyle, targetStyle);
+    return result;
 }
 
 /**
@@ -186,32 +355,13 @@ function normalizeText(text) {
 }
 
 /**
- * Main function to apply formatting to text
+ * Main function to apply formatting to text (updated to use advanced formatting)
  * @param {string} text - Text to format
  * @param {string} style - 'normal', 'bold', 'italic', or 'underline'
  * @returns {string} - Formatted text
  */
 function formatText(text, style) {
-    if (style === 'normal') {
-        return normalizeText(text);
-    }
-    
-    if (style === 'underline') {
-        // First remove any existing underlines
-        let cleaned = '';
-        for (let i = 0; i < text.length; i++) {
-            if (text[i] === '\u0332') continue;
-            cleaned += text[i];
-        }
-        
-        // Then add underlines to each character
-        return Array.from(cleaned).map(c => 
-            c.trim() === '' ? c : c + '\u0332'
-        ).join('');
-    }
-    
-    // For bold and italic, convert each character
-    return Array.from(text).map(char => formatChar(char, style)).join('');
+    return formatTextAdvanced(text, style);
 }
 
 /**
@@ -284,11 +434,29 @@ function createButton(label, style) {
                 const range = selection.getRangeAt(0);
                 
                 if (editor.contains(range.commonAncestorContainer)) {
-                    const selectedText = range.toString();
+                    // Get the selected content with formatting preserved
+                    const selectedContent = getSelectedTextWithFormatting(range);
                     
-                    if (selectedText) {
-                        const formatted = formatText(selectedText, style);
-                        document.execCommand('insertText', false, formatted);
+                    if (selectedContent) {
+                        const formatted = formatText(selectedContent, style);
+                        
+                        // Delete the selected content and insert the formatted version
+                        range.deleteContents();
+                        
+                        // Create a document fragment to insert the formatted text
+                        const fragment = document.createDocumentFragment();
+                        const textNode = document.createTextNode(formatted);
+                        fragment.appendChild(textNode);
+                        
+                        range.insertNode(fragment);
+                        
+                        // Update character count
+                        updateCharacterCount();
+                        
+                        // Restore selection to the end of inserted content
+                        range.collapse(false);
+                        selection.removeAllRanges();
+                        selection.addRange(range);
                     }
                 }
             }

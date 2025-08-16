@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LinkedIn Formatter",
-  "version": "1.0",
+  "version": "1.1.0",
   "description": "Adds additional buttons to format the text while creating a post in LinkedIn.",
   "background": {
     "service_worker": "background.js"

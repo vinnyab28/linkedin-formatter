@@ -2,6 +2,32 @@
 
 This document tracks all notable changes to the LinkedIn Formatter extension across versions.
 
+## Version 1.1.0 - August 15, 2025
+
+### Bug Fixes
+- **Fixed newline preservation**: Multi-line selections now maintain line breaks when formatting is applied
+- **Fixed text combination issue**: Selected text spanning multiple lines no longer gets combined into a single line
+
+### New Features
+- **Toggle functionality**: Formatting buttons now intelligently toggle formatting on/off
+  - If text is already bold, clicking Bold will remove bold formatting
+  - If text is already italic, clicking Italic will remove italic formatting
+  - If text is already underlined, clicking Underline will remove underline formatting
+- **Smart formatting detection**: Extension analyzes selected text and applies/removes formatting based on majority formatting state
+- **Mixed formatting support**: Better handling of text with multiple formatting types
+- **Improved character analysis**: More accurate detection of existing formatting in selected text
+
+### Technical Improvements
+- Completely rewritten formatting engine for better reliability
+- Improved Unicode character handling and detection
+- Better preservation of whitespace and special characters
+- More sophisticated selection handling that preserves original formatting context
+- Reduced toggle threshold to 30% for more responsive user experience
+
+### Known Limitations
+- Unicode Mathematical Alphanumeric Symbols don't support combined bold+italic formatting
+- When both bold and italic are requested, bold takes priority over italic
+
 ## Version 1.0.0 (Initial Release) - June 26, 2025
 
 ### Features
